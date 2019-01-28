@@ -288,7 +288,7 @@ local function GetBootPage(update)
 	setForeground(0x0000af)
 	ClearLastPage()
 	set(25,2,'  Boot or repair  ')
-	SetTextInTheMiddle(4,49,'Select device to boot or repair his')
+	SetTextInTheMiddle(4,49,'Select device to boot or repair it')
 
 	set(50,18,'←→    Select Screen')
 	set(50,19,'↑↓    Select Item')
@@ -308,7 +308,7 @@ local function GetBootPage(update)
 					ready = true
 					--OSVersion = getOS(address) -- какого то Х** не пашет
 				else 
-					d=' [not ready to boot]'
+					d=' [Not ready to boot]'
 					ready = false
 				end
 
