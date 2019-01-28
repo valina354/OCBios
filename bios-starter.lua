@@ -1,4 +1,4 @@
-local handle, code, result, reason = component.proxy(component.list("internet")()).request('https://www.dropbox.com/s/g0g33x1z4p48otc/bios.lua?dl=1'), ''
+local handle, code, result, reason = component.proxy(component.list("internet")()).request('https://raw.githubusercontent.com/titan123023/OCBios/master/bios.lua'), ''
 if handle then
 	while true do
 		result, reason = handle.read(math.huge)
