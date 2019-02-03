@@ -167,7 +167,7 @@ function Modifier.TryModify()
 			invoke(address,'close',handle)
 		end
 
-		local newBootCode = string.sub(bootCode,1,ServiceMenuStage[3][2])..'component.proxy(computer.getBootAddress()) or component.proxy(component.proxy(component.list("eeprom")()).getData())'..string.sub(bootCode,ServiceMenuStage[3][3],string.len(bootCode))
+		local newBootCode = string.sub(bootCode,1,ServiceMenuStage[3][2])..'component.proxy(component.proxy(component.list("eeprom")()).getData():sub(1,36))'..string.sub(bootCode,ServiceMenuStage[3][3],string.len(bootCode))
 
 		local handle, err = invoke(address, "open", "/OS.lua",'w')
 		if handle then
