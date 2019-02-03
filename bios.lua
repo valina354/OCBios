@@ -5,7 +5,6 @@ local invoke = component.invoke
 local unicode = unicode or utf8 --lua 5.3 compatibility )0))
 
 local gpu,InternetInt,internet
-local BiosStage
 
 local users
 local filesystems
@@ -15,34 +14,177 @@ local BootMenuStage = {1}--1 - current str, 2 - max strs, 3 - label, 4 - address
 local ServiceMenuStage
 local BootPageFirstStart,SystemInformationPageFirstStart = true, true
 
-local BiosVersion = '0.05b'
+local Bios = {StockSettings = {
+	language = 'en'
+}}
+
+local Modifier = {}
+local UI = {}
+
+local BiosSetingsPage = {
+	Element = 1, 
+	Strings = {
+		' Language: [en]', 							-- Language = ' Language: [en]', 		
+		' Format EEPROM data',						-- FormatEEPROMData = ' Format EEPROM data',
+		' Debug format EEPROM data',					-- DebugFormatEEPROMData = ' Debug format EEPROM data',
+		' Debug format EEPROM code'					-- DebugFormatEEPROMCode = ' Debug format EEPROM code'
+	}, 
+	Descriptions = {
+		--{'This option',					--Данная опция позволит модифицировать файлы запуска MineOS и OpenLoader. Это позволит запускать MineOS/SecureOS/Plan9k даже со включенным приоритетом бута.
+		-- 'will allow to modify',
+		-- 'the startup files of',
+		-- 'MineOS and OpenLoader.',
+		-- 'This will allow to load',
+		-- 'MineOS SecureOS Plan9k'},
+		{'Changes the language', --Меняет язык биоса. Для того, чтобы изменения вступили в силу требуется перезагрузить компьютер. [Еще не готово]
+		'of the BIOS.',
+		'In order for',
+		'the changes',
+		'to take effect,',
+		'you must restart',
+		'the computer.',
+		'[Not ready yet]'},
+		{'deletes BIOS data', --удаляет данные BIOS (сбрасывает настройки)
+		'(resets settings)'
+		},
+	}
+}
+
+local ServiceMenuPage = {
+	Descriptions = {
+		{'Try to boot from',
+		'the disk.',
+		'If you are using MineOS',
+		'then apply',
+		'the bootloader patch'}, --Попытатся загрузится с диска. Если вы используете MineOS, то примените патч загрузчика
+		{'Applies the bootloader',
+		'patch'},
+		{},
+		{'Deletes all data',
+		'from disk'} --Удаляет все данные c диска
+	}
+}
+
+
+local BiosVersion = '0.12b'
+
+local Debug = {}
 ------------------------------------------
 computer.getBootAddress = function()
-	local controllerMemory = invoke(cl("eeprom")(), "getData")
-	return string.sub(controllerMemory,1,36) --первый адрес в контроллере (1-36 символ)
+	local MemoryController = invoke(cl("eeprom")(), "getData")
+	return string.sub(MemoryController,1,36) --первый адрес в контроллере (1-36 символ)
 end
 
 computer.setBootAddress = function(address)
 	if string.len(address) == 36 then
-		local controllerMemory = invoke(cl("eeprom")(), "getData")
-		local newData = address..string.sub(controllerMemory,37,string.len(controllerMemory)) --перезапись первых 36 символов
+		local MemoryController = invoke(cl("eeprom")(), "getData")
+		local newData = address..string.sub(MemoryController,37,string.len(MemoryController)) --перезапись первых 36 символов
 		return invoke(cl('eeprom')(), "setData", newData)
 	end
 end
 
-local function getPriorityBootAddress()
-	local controllerMemory = invoke(cl("eeprom")(), "getData")
-	return string.sub(controllerMemory,37,73) --второй адрес в контроллере (36-73 символ)
+function Bios.FormatData()
+	--0f14248c-70d5-48c7-b664-f4fb970f0ddb!0f14248c-70d5-48c7-b664-f4fb970f0ddb!ru!
+	invoke(cl('eeprom')(), "setData", '------------------------------------------------------------------------en')
 end
 
-local function setPriorityBootAddress(address)
-	if string.len(address) == 36 then
-		local controllerMemory = invoke(cl("eeprom")(), "getData")
-		local newData = string.sub(controllerMemory,1,36)..address..string.sub(controllerMemory,74,string.len(controllerMemory)) --перезапись 37-74 символов
-		return invoke(cl('eeprom')(), "setData", newData)
+function Bios.SetLanguage(key)
+	local MemoryController = invoke(cl("eeprom")(), "getData")
+	local newData = string.sub(MemoryController,1,72)..key..string.sub(MemoryController,75,string.len(MemoryController)) -- 73,74 символы - код языка
+end
+
+function Bios.GetLanguage()
+	local MemoryController = invoke(cl("eeprom")(), "getData")
+	return string.sub(MemoryController,73,74) -- 73,74 символы - код языка
+end
+
+function Bios.GetPriorityBootAddress()
+	local MemoryController = invoke(cl("eeprom")(), "getData")
+	return string.sub(MemoryController,37,72) --второй адрес в контроллере (36-73 символ)
+end
+
+function Bios.SetPriorityBootAddress(address)
+	local MemoryController = invoke(cl("eeprom")(), "getData")
+	local newData = string.sub(MemoryController,1,36)..address..string.sub(MemoryController,73,string.len(MemoryController)) --перезапись 37-72 символов
+	return invoke(cl('eeprom')(), "setData", newData)
+end
+
+------------------------------------------
+function Modifier.GetModifierOpportunity()
+	if ServiceMenuStage[2][6] == 'MineOS' then
+		local address = ServiceMenuStage[2][4]
+		local bootCode = ""
+
+		local handle, err = invoke(address, "open", "/OS.lua")
+		if handle then
+			repeat
+				local chunk = invoke(address, "read", handle, math.huge)
+				bootCode = bootCode..(chunk or "")
+			until not chunk
+		end
+
+		if bootCode then
+			--gpu.set(1,1,string.sub(bootCode,180,249)) --Визуально  выводит (всё правильно)
+			--if string.sub(bootCode,180,249) == 'component.proxy(component.proxy(component.list("eeprom")()).getData())' then
+			--	computer.beep() --арёт... всё правильно
+			--end
+			--if string.find(string.sub(bootCode,180,249),'component.proxy(component.proxy(component.list("eeprom")()).getData())') then
+			--	computer.beep() --не может найти, хотя они полностью идентичны...
+			--end
+			-- не ищет, хотя это одно и тоже
+			--gpu.set(1,1,string.find(bootCode,'component.proxy(component.proxy(component.list("eeprom")()).getData())'))
+
+			--local indexs = {string.find(bootCode,'component.proxy(component.proxy(component.list("eeprom")()).getData())')}
+
+			--костылёчек
+			local indexs = {}
+			if string.sub(bootCode,180,249) == 'component.proxy(component.proxy(component.list("eeprom")()).getData())' then
+				indexs[1],indexs[2] = 179,250
+			end
+
+			if indexs[1] then
+				return indexs
+			else
+				return false
+			end
+		else
+			return false
+		end
 	end
 end
 
+function Modifier.TryModify()
+	if ServiceMenuStage[2][6] == 'MineOS' then
+		local address = ServiceMenuStage[2][4]
+		local bootCode = ""
+
+		local handle, err = invoke(address, "open", "/OS.lua")
+		if handle then
+			repeat
+				local chunk = invoke(address, "read", handle, math.huge)
+				bootCode = bootCode..(chunk or "")
+			until not chunk
+			invoke(address,'close',handle)
+		end
+
+		local newBootCode = string.sub(bootCode,1,ServiceMenuStage[3][2])..'component.proxy(computer.getBootAddress()) or component.proxy(component.proxy(component.list("eeprom")()).getData())'..string.sub(bootCode,ServiceMenuStage[3][3],string.len(bootCode))
+
+		local handle, err = invoke(address, "open", "/OS.lua",'w')
+		if handle then
+			invoke(address, 'write', handle, newBootCode)
+			invoke(address,'close',handle)
+		end
+	end
+end
+------------------------------------------
+function Debug.FormatData()
+	invoke(cl('eeprom')(), "setData",'')
+end
+
+function Debug.FormatBios()
+	invoke(cl('eeprom')(), "set",'')
+end
+------------------------------------------
 local function setBackground(a)
 	gpu.setBackground(a)
 end
@@ -92,14 +234,23 @@ local function BootWithAddress(address)
 		local chunk = invoke(address, "read", handle, math.huge)
 		bootCode = bootCode..(chunk or "")
 	until not chunk
+	invoke(address,'close',handle)
+
 	load(bootCode)()
 end
 
 local function BootWithoutAddress()
-	local PriorityBootAddress = getPriorityBootAddress()
-	if PriorityBootAddress and component.proxy(PriorityBootAddress) and invoke(PriorityBootAddress,'exists','/init.lua') and not invoke(PriorityBootAddress, "isDirectory", "init.lua") then
+	local PriorityBootAddress = Bios.GetPriorityBootAddress()
+	if PriorityBootAddress and component.proxy(PriorityBootAddress) and ((invoke(PriorityBootAddress,'exists','/init.lua') and not invoke(PriorityBootAddress, "isDirectory", "init.lua")) or (invoke(PriorityBootAddress,'exists','/OS.lua') and not invoke(PriorityBootAddress, "isDirectory", "OS.lua"))) then
 		computer.setBootAddress(PriorityBootAddress)
-		local handle, err = invoke(PriorityBootAddress, "open", "/init.lua")
+
+		local handle, err
+		if invoke(PriorityBootAddress,'exists','/OS.lua') and not invoke(PriorityBootAddress, "isDirectory", "OS.lua") then
+			handle, err = invoke(PriorityBootAddress, "open", "/OS.lua")
+		elseif invoke(PriorityBootAddress,'exists','/init.lua') and not invoke(PriorityBootAddress, "isDirectory", "init.lua") then
+			handle, err = invoke(PriorityBootAddress, "open", "/init.lua")
+		end
+
 		if not handle then
 			error(err)
 		end
@@ -108,32 +259,38 @@ local function BootWithoutAddress()
 			local chunk = invoke(PriorityBootAddress, "read", handle, math.huge)
 			bootCode = bootCode..(chunk or "")
 		until not chunk
+		invoke(PriorityBootAddress,'close',handle)
+
 		load(bootCode)()
 	else
 		for address in pairs(cl('filesystem')) do
 			if cp(address).getLabel() ~= 'tmpfs' then
-				if invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "init.lua") then 
+				if (invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "init.lua")) or (invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "OS.lua")) then 
 					computer.setBootAddress(address)
-					local handle, err = invoke(address, "open", "/init.lua")
+
+					local handle, err
+					if invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "OS.lua") then
+						handle, err = invoke(address, "open", "/OS.lua")
+					elseif invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "init.lua") then
+						handle, err = invoke(address, "open", "/init.lua")
+					end
+
 					if handle then
 						local bootCode = ""
 						repeat
 							local chunk = invoke(address, "read", handle, math.huge)
 							bootCode = bootCode..(chunk or "")
 						until not chunk
+						invoke(address,'close',handle)
+
 						load(bootCode)()
 					end
 				end
 			end
 		end
 	end
-	error('No bootable device!')
 end
 ------------------------------------------
-local function ChangeDescription(description)
-	-- body
-end
-
 local function getOS(address)
 	if invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "/OS.lua") then --MineOS
 		return 'MineOS'
@@ -156,6 +313,7 @@ local function getOS(address)
 			bootCode = bootCode..(chunk or "")
 		until not chunk
 		local _,strEnd = string.find(bootCode,'_G._OSVERSION = "')
+		invoke(address,'close',handle)
 		return string.sub(bootCode,strEnd+1,string.find(bootCode,'"',strEnd+1)-1)
 	end
 	return tostring('unknown') --если ничё ни подошло
@@ -178,7 +336,7 @@ local function SystemInformationPageUpdate()
 	set(6,13,'Computer uptime: '..uptime)
 	set(6,14,'Computer max energy: '..computer.maxEnergy())
 	set(6,15,'Computer energy: '..math.modf(computer.energy()))
-	set(6,16,'Boot priority address: '..unicode.sub(getPriorityBootAddress(),1,18))
+	set(6,16,'Boot priority address: '..unicode.sub(Bios.GetPriorityBootAddress(),1,18))
 end
 ------------------------------------------
 
@@ -266,7 +424,7 @@ local function GetSystemInformationPage()
 	set(6,13,'Computer uptime: '..computer.uptime())
 	set(6,14,'Computer max energy: '..computer.maxEnergy())
 	set(6,15,'Computer energy: '..math.modf(computer.energy()))
-	set(6,16,'Boot priority address: '..unicode.sub(getPriorityBootAddress(),1,18))
+	set(6,16,'Boot priority address: '..unicode.sub(Bios.GetPriorityBootAddress(),1,18))
 	set(6,17,'Last boot disc address: '..unicode.sub(computer.getBootAddress(),1,18))
 end
 
@@ -281,7 +439,6 @@ local function CheckDriveReadyToStart()
 end
 
 local function GetBootPage(update)
-	BiosStage = 'MainScene'
 	CurrentMenu = 'BootAndRepair'
 
 	setBackground(0xcdcdcf)
@@ -334,18 +491,65 @@ local function GetBootPage(update)
 	end
 	BootMenuStage[2] = #filesystems
 
-	set(51,4,'Regular hard drive...')
-	set(51,6,'Address: '..unicode.sub(filesystems[BootMenuStage[1]][4],1,13))
-	set(51,7,'Name: '..unicode.sub(filesystems[BootMenuStage[1]][3],1,15))
-	set(51,8,'Ready to boot: '..CheckDriveReadyToStart())
-	set(51,9,'OS: '..filesystems[BootMenuStage[1]][6])
-	set(51,10,'Total space: '..filesystems[BootMenuStage[1]][1].spaceTotal())
-	set(51,11,'Used space: '..filesystems[BootMenuStage[1]][1].spaceUsed())
-	set(51,12,'Free space: '..filesystems[BootMenuStage[1]][1].spaceTotal()-filesystems[BootMenuStage[1]][1].spaceUsed())
+	if BootMenuStage[2] ~= 0 then
+		set(51,4,'Regular hard drive...')
+		set(51,6,'Address: '..unicode.sub(filesystems[BootMenuStage[1]][4],1,13))
+		set(51,7,'Name: '..unicode.sub(filesystems[BootMenuStage[1]][3],1,15))
+		set(51,8,'Ready to boot: '..CheckDriveReadyToStart())
+		set(51,9,'OS: '..filesystems[BootMenuStage[1]][6])
+		set(51,10,'Total space: '..filesystems[BootMenuStage[1]][1].spaceTotal())
+		set(51,11,'Used space: '..filesystems[BootMenuStage[1]][1].spaceUsed())
+		set(51,12,'Free space: '..filesystems[BootMenuStage[1]][1].spaceTotal()-filesystems[BootMenuStage[1]][1].spaceUsed())
+	end
 end
 
-local function GetBiosSetingsPage()
-	
+function UI.DrawDescription(Table,element)
+	setForeground(0x0000af)
+
+	fill(50,4,24,15,' ') --очистит старое описание
+	if Table.Descriptions[element] then
+		local description = Table.Descriptions[element]
+		for i=1,#description do
+			SetTextInTheMiddle(3+i,24,description[i],50)
+		end
+	end
+end
+
+function BiosSetingsPage.OnChangeField(last)
+	setForeground(0x0000af)
+	local field
+	set(4,6+last,' '..BiosSetingsPage.Strings[last])
+
+	setForeground(0xffffff)
+	set(4,6+BiosSetingsPage.Element,'►'..BiosSetingsPage.Strings[BiosSetingsPage.Element])
+
+	UI.DrawDescription(BiosSetingsPage,BiosSetingsPage.Element)
+end
+
+function BiosSetingsPage.Draw()
+	CurrentMenu = 'BiosSetings'
+
+	setBackground(0xcdcdcf)
+	setForeground(0x0000af)
+	ClearLastPage()
+	set(43,2,'  Bios settings  ')
+	SetTextInTheMiddle(4,49,'BIOS setup')
+
+	set(50,19,'←→    Select Screen')
+	set(50,20,'↑↓    Select Item')
+	set(50,21,'Enter Select Field')
+	set(50,22,'F9    Save and Exit')
+
+	UI.DrawDescription(BiosSetingsPage,BiosSetingsPage.Element)
+
+	setForeground(0x0000af)
+	set(4,7,' '..BiosSetingsPage.Strings[1]) -- Язык
+	set(4,8,' '..BiosSetingsPage.Strings[2]) -- Сброс настроек
+	set(4,9,' '..BiosSetingsPage.Strings[3]) -- Сброс настроек [Отладка]
+	set(4,10,' '..BiosSetingsPage.Strings[4]) -- Форматировать биос [Отладка]
+
+	setForeground(0xffffff)
+	set(4,6+BiosSetingsPage.Element,'►'..BiosSetingsPage.Strings[BiosSetingsPage.Element])
 end
 
 local function BootOtr(this,last)
@@ -380,13 +584,19 @@ local function ServiceTheDeviceOtr(this,last)
 			set(4,8,'  Try boot now (not available)')
 		end
 	elseif last == 2 then
-		if getPriorityBootAddress() == ServiceMenuStage[2][4] then
-			set(4,9,'  Make disk priority bootloader [is already]')
+		if ServiceMenuStage[3][1] then
+			set(4,9,'  Try to modify the bootloader             ')
 		else
-			set(4,9,'  Make disk priority bootloader [is not]    ')
+			set(4,9,'  Try to modify the bootloader [impossible]')
 		end
 	elseif last == 3 then
-		set(4,10,'  Format disk')
+		if Bios.GetPriorityBootAddress() == ServiceMenuStage[2][4] then
+			set(4,10,'  Make disk priority bootloader [is already]')
+		else
+			set(4,10,'  Make disk priority bootloader [is not]    ')
+		end
+	elseif last == 4 then
+		set(4,11,'  Format disk')
 	end
 
 	setForeground(0xffffff)
@@ -401,31 +611,39 @@ local function ServiceTheDeviceOtr(this,last)
 			set(4,8,'► Try boot now (not available)')
 		end
 	elseif this == 2 then
-		if getPriorityBootAddress() == ServiceMenuStage[2][4] then
-			set(4,9,'► Make disk priority bootloader [is already]')
+		if ServiceMenuStage[3][1] then
+			set(4,9,'► Try to modify the bootloader             ')
 		else
-			set(4,9,'► Make disk priority bootloader [is not]    ')
+			set(4,9,'► Try to modify the bootloader [impossible]')
 		end
 	elseif this == 3 then
-		set(4,10,'► Format disk')
+		if Bios.GetPriorityBootAddress() == ServiceMenuStage[2][4] then
+			set(4,10,'► Make disk priority bootloader [is already]')
+		else
+			set(4,10,'► Make disk priority bootloader [is not]    ')
+		end
+	elseif this == 4 then
+		set(4,11,'► Format disk')
 	end
+
+	UI.DrawDescription(ServiceMenuPage,this)
 end
 
-local function FormatDevice(proxy)
-	for _, file in ipairs(proxy.list("/")) do
-		proxy.remove(file)
+local function FormatDevice(drive)
+	for _, file in ipairs(drive.list("/")) do
+		drive.remove(file)
 	end
 end
 
 local function ServiceTheDeviceSetPriorityBootAddress(address)
-	if address ~= getPriorityBootAddress() then
-		setPriorityBootAddress(address)
+	if address ~= Bios.GetPriorityBootAddress() then
+		Bios.SetPriorityBootAddress(address)
 
 		setForeground(0xffffff)
-		if getPriorityBootAddress() == ServiceMenuStage[2][4] then
-			set(4,9,'► Make disk priority bootloader [is already]')
+		if Bios.GetPriorityBootAddress() == ServiceMenuStage[2][4] then
+			set(4,10,'► Make disk priority bootloader [is already]')
 		else
-			set(4,9,'► Make disk priority bootloader [is not]    ')
+			set(4,10,'► Make disk priority bootloader [is not]    ')
 		end
 	end
 end
@@ -463,18 +681,27 @@ local function ServiceTheDevice()
 	end
 	setForeground(0x0000af)
 
-	if getPriorityBootAddress() == ServiceMenuStage[2][4] then
-		set(4,9,'  Make disk priority bootloader [is already]')
+	local modifyOpportunityAndIndexes = Modifier.GetModifierOpportunity()
+	if modifyOpportunityAndIndexes then
+		ServiceMenuStage[3] = {true,modifyOpportunityAndIndexes[1],modifyOpportunityAndIndexes[2]}
+		set(4,9,'  Try to modify the bootloader')
 	else
-		set(4,9,'  Make disk priority bootloader [is not]')
+		ServiceMenuStage[3] = {false}
+		set(4,9,'  Try to modify the bootloader [impossible]')
 	end
 
-	set(4,10,'  Format disk')
+	if Bios.GetPriorityBootAddress() == ServiceMenuStage[2][4] then
+		set(4,10,'  Make disk priority bootloader [is already]')
+	else
+		set(4,10,'  Make disk priority bootloader [is not]')
+	end
+
+	set(4,11,'  Format disk')
+
+	UI.DrawDescription(ServiceMenuPage,ServiceMenuStage[1])
 end
 ------------------------------------------
 local function POST()
-	BiosStage = 'POST'
-
 	local sc,gpA,iA = cl('screen')(),cl('gpu')(),cl('internet')()
 	if gpA and sc then 
 		pcall(invoke, gpA, 'bind', sc)
@@ -489,6 +716,10 @@ local function POST()
 		internet=cp(iA) 
 	else
 		computer.beep(2000,2)
+	end
+
+	if invoke(cl("eeprom")(), "getData") == '' then
+		Bios.FormatData()
 	end
 
 end
@@ -525,9 +756,22 @@ local function ServiceTheDevicePageKeyListener(key)
 			end
 
 		elseif ServiceMenuStage[1] == 2 then
-			ServiceTheDeviceSetPriorityBootAddress(ServiceMenuStage[2][4])
+			if ServiceMenuStage[3][1] then
+				Modifier.TryModify()
+				local modifyOpportunityAndIndexes = Modifier.GetModifierOpportunity()
+				if modifyOpportunityAndIndexes then
+					ServiceMenuStage[3] = {true,modifyOpportunityAndIndexes[1],modifyOpportunityAndIndexes[2]}
+				else
+					ServiceMenuStage[3] = {false}
+				end
+
+				ServiceTheDeviceOtr(ServiceMenuStage[1],ServiceMenuStage[1])
+			end
 
 		elseif ServiceMenuStage[1] == 3 then
+			ServiceTheDeviceSetPriorityBootAddress(ServiceMenuStage[2][4])
+
+		elseif ServiceMenuStage[1] == 4 then
 			FormatDevice(ServiceMenuStage[2][1])
 
 		end
@@ -536,13 +780,46 @@ local function ServiceTheDevicePageKeyListener(key)
 		ServiceMenuStage[1] = ServiceMenuStage[1]-1
 		ServiceTheDeviceOtr(ServiceMenuStage[1], last)
 
-	elseif key == 208 and ServiceMenuStage[1] < 3 then
+	elseif key == 208 and ServiceMenuStage[1] < 4 then
 		local last = ServiceMenuStage[1]
 		ServiceMenuStage[1] = ServiceMenuStage[1]+1
 		ServiceTheDeviceOtr(ServiceMenuStage[1], last)
 
 	elseif key == 15 then --tab
 		GetBootPage(true)
+	end
+end
+
+function BiosSetingsPage.FunctionStarter()
+	local element = BiosSetingsPage.Element
+	if element == 1 then
+
+
+	elseif element == 2 then
+		Bios.FormatData()
+
+	elseif element == 3 then
+		Debug.FormatData()
+
+	elseif element == 4 then
+		Debug.FormatBios()
+
+	end
+	BiosSetingsPage.Draw()
+end
+
+function BiosSetingsPage.KeyListener(key)
+	if key==28 then
+		BiosSetingsPage.FunctionStarter()
+	elseif key == 200 and BiosSetingsPage.Element > 1 then
+		local last = BiosSetingsPage.Element
+		BiosSetingsPage.Element = BiosSetingsPage.Element-1
+		BiosSetingsPage.OnChangeField(last)
+
+	elseif key == 208 and BiosSetingsPage.Element < 4 then
+		local last = BiosSetingsPage.Element
+		BiosSetingsPage.Element = BiosSetingsPage.Element+1
+		BiosSetingsPage.OnChangeField(last)
 	end
 end
 
@@ -553,13 +830,17 @@ local function keyListener()
 			if key==203 and CurrentMenu ~= 'SystemInformation' then --4
 				if CurrentMenu == 'BootAndRepair' then
 					GetSystemInformationPage()
+				elseif CurrentMenu == 'BiosSetings' then
+					GetBootPage()
 				end
 			elseif key==205 and CurrentMenu ~= 'BiosSetings' then --6
 				if CurrentMenu == 'SystemInformation' then
 					GetBootPage()
+				elseif CurrentMenu == 'BootAndRepair' then
+					BiosSetingsPage.Draw()
 				end
 			elseif key==67 then --F9
-				if CurrentMenu == 'BootAndRepair' or CurrentMenu == 'SystemInformation' then
+				if CurrentMenu == 'BootAndRepair' or CurrentMenu == 'SystemInformation' or CurrentMenu == 'BiosSetings' then
 					return
 				end
 			else
@@ -567,6 +848,8 @@ local function keyListener()
 					BootAndRepairPageKeyListener(key)
 				elseif CurrentMenu == 'ServiceTheDevice' then
 					ServiceTheDevicePageKeyListener(key)
+				elseif CurrentMenu == 'BiosSetings' then
+					BiosSetingsPage.KeyListener(key)
 				end
 			end
 		end
@@ -577,8 +860,6 @@ local function keyListener()
 end
 
 local function HiMenu() -- меню приветствия
-	BiosStage = 'HiMenu'
-
 	setResolution(50,16)
 	setBackground(0) -- на случай если запуск производится после ошибки биоса (синего экрана)
 	fillBackground() -- заливка чёрным цветом ^^^
@@ -609,6 +890,18 @@ local function HiMenu() -- меню приветствия
 		keyListener()
 	end
 	BootWithoutAddress()
+	SetTextInTheMiddle(8,50,'No bootable device found!')
+
+	while true do
+		local e,_,_,k = computer.pullSignal(0.5)
+		if e=='key_up' and k==88 then
+			break
+		end
+		computer.beep()
+	end
+	got()
+	GetSystemInformationPage()
+	keyListener()
 end
 ------------
 
