@@ -65,8 +65,16 @@ local ServiceMenuPage = {
 	}
 }
 
+local SaveAndExitPage = {
+	Element = 1,
+	Strings = {
+		'Restart',
+		'Shutdown',
+        'Continue'
+	}
+}
 
-local BiosVersion = '0.12b'
+local BiosVersion = '0.13b'
 
 local Debug = {}
 ------------------------------------------
@@ -366,12 +374,22 @@ local function SystemInformationPageUpdate()
 
 	fill(6,13,41,4,' ')
 	local uptime = computer.uptime()
-	if uptime > 60 then
-		uptime = tostring(math.modf(uptime/60*10)/10)..'m'
-	else
-		uptime = uptime..'s'
-	end
-	set(6,13,'Computer uptime: '..uptime)
+    local secs = math.floor(uptime % 60)
+    local mins = math.floor((uptime / 60) % 60)
+    local hours = math.floor((uptime / 3600) % 24)
+    local days = math.floor(uptime / 86400)
+
+    local formattedUptime
+    if days > 0 then
+        formattedUptime = string.format("%dd %02dh %02dm %02ds", days, hours, mins, secs)
+    elseif hours > 0 then
+        formattedUptime = string.format("%02dh %02dm %02ds", hours, mins, secs)
+    elseif mins > 0 then
+        formattedUptime = string.format("%02dm %02ds", mins, secs)
+    else
+        formattedUptime = string.format("%02ds", secs)
+    end
+	set(6,13,'Computer uptime: '..formattedUptime)
 	set(6,14,'Computer max energy: '..computer.maxEnergy())
 	set(6,15,'Computer energy: '..math.modf(computer.energy()))
 	set(6,16,'Boot priority address: '..unicode.sub(Bios.GetPriorityBootAddress(),1,18))
@@ -686,6 +704,63 @@ local function ServiceTheDeviceSetPriorityBootAddress(address)
 	end
 end
 
+local function SaveAndExitPageDraw()
+    CurrentMenu = 'SaveAndExit'
+
+	setBackground(0xcdcdcf)
+	setForeground(0x0000af)
+    ClearLastPage()
+    SetTextInTheMiddle(4,49,'Save and exit options')
+    set(50,21,'↑↓    Select Item')
+    set(50,22,'Enter Select Field')
+
+    setForeground(0x0000af)
+	set(4,7,' '..SaveAndExitPage.Strings[1])
+	set(4,8,' '..SaveAndExitPage.Strings[2])
+	set(4,9,' '..SaveAndExitPage.Strings[3])
+
+    setForeground(0xffffff)
+	set(4,6+SaveAndExitPage.Element,'►'..SaveAndExitPage.Strings[SaveAndExitPage.Element])
+end
+
+function SaveAndExitPage.FunctionStarter()
+	local element = SaveAndExitPage.Element
+	if element == 1 then
+		computer.shutdown(true)
+	elseif element == 2 then
+		computer.shutdown()
+	elseif element == 3 then
+        if CurrentMenu == 'SaveAndExit' then
+            GetSystemInformationPage()
+        end
+	end
+end
+
+function SaveAndExitPage.OnChangeField(last)
+	setForeground(0x0000af)
+	local field
+	set(4,6+last,' '..SaveAndExitPage.Strings[last])
+
+	setForeground(0xffffff)
+	set(4,6+SaveAndExitPage.Element,'►'..SaveAndExitPage.Strings[SaveAndExitPage.Element])
+end
+
+function SaveAndExitPage.KeyListener(key)
+	if key==28 then
+		SaveAndExitPage.FunctionStarter()
+    elseif key == 200 and SaveAndExitPage.Element > 1 then
+		local last = SaveAndExitPage.Element
+		SaveAndExitPage.Element = SaveAndExitPage.Element-1
+		SaveAndExitPage.OnChangeField(last)
+
+	elseif key == 208 and SaveAndExitPage.Element < 3 then
+		local last = SaveAndExitPage.Element
+		SaveAndExitPage.Element = SaveAndExitPage.Element+1
+		SaveAndExitPage.OnChangeField(last)
+	end
+end
+
+
 local function ServiceTheDevice()
 	CurrentMenu = 'ServiceTheDevice'
 	ServiceMenuStage = {1} 
@@ -870,17 +945,17 @@ local function keyListener()
 					GetSystemInformationPage()
 				elseif CurrentMenu == 'BiosSetings' then
 					GetBootPage()
+                elseif CurrentMenu == 'SaveAndExit' then
+                    GetBiosSetingsPage()
 				end
-			elseif key==205 and CurrentMenu ~= 'BiosSetings' then --6
+			elseif key==205 and CurrentMenu ~= 'BiosSetings' and CurrentMenu ~= 'SaveAndExit' then --6
 				if CurrentMenu == 'SystemInformation' then
 					GetBootPage()
 				elseif CurrentMenu == 'BootAndRepair' then
 					BiosSetingsPage.Draw()
-				end
-			elseif key==67 then --F9
-				if CurrentMenu == 'BootAndRepair' or CurrentMenu == 'SystemInformation' or CurrentMenu == 'BiosSetings' then
-					return
-				end
+                end
+            elseif key==67 then --F9
+                SaveAndExitPageDraw()
 			else
 				if CurrentMenu == 'BootAndRepair' then
 					BootAndRepairPageKeyListener(key)
@@ -888,6 +963,8 @@ local function keyListener()
 					ServiceTheDevicePageKeyListener(key)
 				elseif CurrentMenu == 'BiosSetings' then
 					BiosSetingsPage.KeyListener(key)
+                elseif CurrentMenu == 'SaveAndExit' then
+                    SaveAndExitPage.KeyListener(key)
 				end
 			end
 		end
