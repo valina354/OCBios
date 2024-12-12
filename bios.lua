@@ -443,6 +443,7 @@ local function got()
 	set(3,2,'  System information  ')
 	set(25,2,'  Boot or repair  ')
 	set(43,2,'  Bios settings  ')
+    set(62,2,'  Save/Exit  ') -- Added Save/Exit tab
 	fill(1,25,74,1,' ')
 	setForeground(0xcdcdcf)
 	SetTextInTheMiddle(25,74,'v'..BiosVersion..' Made by titan123023, ATK inc.')
