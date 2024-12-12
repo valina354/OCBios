@@ -83,6 +83,16 @@ computer.setBootAddress = function(address)
 	end
 end
 
+function computer.emergencyRecover()
+	local mem = {}
+	for address, _ in pairs(cl('filesystem')) do
+		if component.proxy(address).getLabel()~='tmpfs' then
+			table.insert(mem, {address,component.proxy(address).getLabel()})
+		end
+	end
+	return mem
+end
+
 function Bios.FormatData()
 	--0f14248c-70d5-48c7-b664-f4fb970f0ddb!0f14248c-70d5-48c7-b664-f4fb970f0ddb!ru!
 	invoke(cl('eeprom')(), "setData", '------------------------------------------------------------------------en')
@@ -216,6 +226,34 @@ local function SetTextInTheMiddle(y,space,text,correct)
 	else
 		set(space/2-unicode.len(text)/2,y,text)
 	end
+end
+
+local function RecoverMode()
+	setResolution(74,25)
+	setBackground(0x0000af)
+	setForeground(0xcdcdcf)
+	fillBackground()
+
+	SetTextInTheMiddle(2,74,'Emergency Recovery Mode',0)
+	SetTextInTheMiddle(3,74,'List of connected disks and their labels:',0)
+    local disks = computer.emergencyRecover()
+    if #disks == 0 then
+        SetTextInTheMiddle(4,74,'No disks found!',0)
+        computer.pullSignal(math.huge)
+        computer.reboot()
+        return
+    end
+	for i, disk in ipairs(disks) do
+		set(5, 4+i,'['..i..'] Address: '..disk[1].. ' Label: '..disk[2])
+	end
+    SetTextInTheMiddle(4+#disks+2,74,'System will reboot in 5 seconds',0)
+    local time = 5
+    while time >0 do
+        os.sleep(1)
+        SetTextInTheMiddle(4+#disks+2,74,'System will reboot in '..time..' seconds',0)
+        time = time -1
+    end
+    computer.reboot()
 end
 ------------------------------------------
 local function BootWithAddress(address)
@@ -867,7 +905,11 @@ local function HiMenu() -- меню приветствия
 	set(11,1,'Advanced BIOS by titan123023')
 	set(7,15,'Press F12 to enter the settings menu')
 	set(8,16,'Press any key to skip this message')
-
+	--add below this line
+	if computer.getBootAddress() == '------------------------------------' then
+		set(6,14,'No Boot Device found! Press F3 to emergency recovery')
+	end
+	--add after this line
 	local goToMenu
 	while true do
 		local e,_,_,k = computer.pullSignal(5)
@@ -876,7 +918,13 @@ local function HiMenu() -- меню приветствия
 				if k==88 then
 					goToMenu = true
 					break
-				else
+				elseif k == 61 then
+                    if computer.getBootAddress() == '------------------------------------' then
+                        RecoverMode()
+                    else
+					   break
+                    end
+                else
 					break
 				end
 			end
@@ -888,9 +936,10 @@ local function HiMenu() -- меню приветствия
 		got()
 		GetSystemInformationPage()
 		keyListener()
-	end
+    end
+    
 	BootWithoutAddress()
-	SetTextInTheMiddle(8,50,'No bootable device found!')
+    SetTextInTheMiddle(8,50,'No bootable device found!')
 
 	while true do
 		local e,_,_,k = computer.pullSignal(0.5)
