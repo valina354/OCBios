@@ -65,16 +65,8 @@ local ServiceMenuPage = {
 	}
 }
 
-local SaveAndExitPage = {
-	Element = 1,
-	Strings = {
-		'Restart',
-		'Shutdown',
-        'Continue'
-	}
-}
 
-local BiosVersion = '0.13b'
+local BiosVersion = '0.12b'
 
 local Debug = {}
 ------------------------------------------
@@ -89,16 +81,6 @@ computer.setBootAddress = function(address)
 		local newData = address..string.sub(MemoryController,37,string.len(MemoryController)) --перезапись первых 36 символов
 		return invoke(cl('eeprom')(), "setData", newData)
 	end
-end
-
-function computer.emergencyRecover()
-	local mem = {}
-	for address, _ in pairs(cl('filesystem')) do
-		if component.proxy(address).getLabel()~='tmpfs' then
-			table.insert(mem, {address,component.proxy(address).getLabel()})
-		end
-	end
-	return mem
 end
 
 function Bios.FormatData()
@@ -235,34 +217,6 @@ local function SetTextInTheMiddle(y,space,text,correct)
 		set(space/2-unicode.len(text)/2,y,text)
 	end
 end
-
-local function RecoverMode()
-	setResolution(74,25)
-	setBackground(0x0000af)
-	setForeground(0xcdcdcf)
-	fillBackground()
-
-	SetTextInTheMiddle(2,74,'Emergency Recovery Mode',0)
-	SetTextInTheMiddle(3,74,'List of connected disks and their labels:',0)
-    local disks = computer.emergencyRecover()
-    if #disks == 0 then
-        SetTextInTheMiddle(4,74,'No disks found!',0)
-        computer.pullSignal(math.huge)
-        computer.reboot()
-        return
-    end
-	for i, disk in ipairs(disks) do
-		set(5, 4+i,'['..i..'] Address: '..disk[1].. ' Label: '..disk[2])
-	end
-    SetTextInTheMiddle(4+#disks+2,74,'System will reboot in 5 seconds',0)
-    local time = 5
-    while time >0 do
-        os.sleep(1)
-        SetTextInTheMiddle(4+#disks+2,74,'System will reboot in '..time..' seconds',0)
-        time = time -1
-    end
-    computer.reboot()
-end
 ------------------------------------------
 local function BootWithAddress(address)
 	computer.setBootAddress(address)
@@ -374,22 +328,12 @@ local function SystemInformationPageUpdate()
 
 	fill(6,13,41,4,' ')
 	local uptime = computer.uptime()
-    local secs = math.floor(uptime % 60)
-    local mins = math.floor((uptime / 60) % 60)
-    local hours = math.floor((uptime / 3600) % 24)
-    local days = math.floor(uptime / 86400)
-
-    local formattedUptime
-    if days > 0 then
-        formattedUptime = string.format("%dd %02dh %02dm %02ds", days, hours, mins, secs)
-    elseif hours > 0 then
-        formattedUptime = string.format("%02dh %02dm %02ds", hours, mins, secs)
-    elseif mins > 0 then
-        formattedUptime = string.format("%02dm %02ds", mins, secs)
-    else
-        formattedUptime = string.format("%02ds", secs)
-    end
-	set(6,13,'Computer uptime: '..formattedUptime)
+	if uptime > 60 then
+		uptime = tostring(math.modf(uptime/60*10)/10)..'m'
+	else
+		uptime = uptime..'s'
+	end
+	set(6,13,'Computer uptime: '..uptime)
 	set(6,14,'Computer max energy: '..computer.maxEnergy())
 	set(6,15,'Computer energy: '..math.modf(computer.energy()))
 	set(6,16,'Boot priority address: '..unicode.sub(Bios.GetPriorityBootAddress(),1,18))
@@ -443,7 +387,6 @@ local function got()
 	set(3,2,'  System information  ')
 	set(25,2,'  Boot or repair  ')
 	set(43,2,'  Bios settings  ')
-    set(62,2,'  Save/Exit  ') -- Added Save/Exit tab
 	fill(1,25,74,1,' ')
 	setForeground(0xcdcdcf)
 	SetTextInTheMiddle(25,74,'v'..BiosVersion..' Made by titan123023, ATK inc.')
@@ -705,63 +648,6 @@ local function ServiceTheDeviceSetPriorityBootAddress(address)
 	end
 end
 
-local function SaveAndExitPageDraw()
-    CurrentMenu = 'SaveAndExit'
-
-	setBackground(0xcdcdcf)
-	setForeground(0x0000af)
-    ClearLastPage()
-    SetTextInTheMiddle(4,49,'Save and exit options')
-    set(50,21,'↑↓    Select Item')
-    set(50,22,'Enter Select Field')
-
-    setForeground(0x0000af)
-	set(4,7,' '..SaveAndExitPage.Strings[1])
-	set(4,8,' '..SaveAndExitPage.Strings[2])
-	set(4,9,' '..SaveAndExitPage.Strings[3])
-
-    setForeground(0xffffff)
-	set(4,6+SaveAndExitPage.Element,'►'..SaveAndExitPage.Strings[SaveAndExitPage.Element])
-end
-
-function SaveAndExitPage.FunctionStarter()
-	local element = SaveAndExitPage.Element
-	if element == 1 then
-		computer.shutdown(true)
-	elseif element == 2 then
-		computer.shutdown()
-	elseif element == 3 then
-        if CurrentMenu == 'SaveAndExit' then
-            GetSystemInformationPage()
-        end
-	end
-end
-
-function SaveAndExitPage.OnChangeField(last)
-	setForeground(0x0000af)
-	local field
-	set(4,6+last,' '..SaveAndExitPage.Strings[last])
-
-	setForeground(0xffffff)
-	set(4,6+SaveAndExitPage.Element,'►'..SaveAndExitPage.Strings[SaveAndExitPage.Element])
-end
-
-function SaveAndExitPage.KeyListener(key)
-	if key==28 then
-		SaveAndExitPage.FunctionStarter()
-    elseif key == 200 and SaveAndExitPage.Element > 1 then
-		local last = SaveAndExitPage.Element
-		SaveAndExitPage.Element = SaveAndExitPage.Element-1
-		SaveAndExitPage.OnChangeField(last)
-
-	elseif key == 208 and SaveAndExitPage.Element < 3 then
-		local last = SaveAndExitPage.Element
-		SaveAndExitPage.Element = SaveAndExitPage.Element+1
-		SaveAndExitPage.OnChangeField(last)
-	end
-end
-
-
 local function ServiceTheDevice()
 	CurrentMenu = 'ServiceTheDevice'
 	ServiceMenuStage = {1} 
@@ -946,17 +832,17 @@ local function keyListener()
 					GetSystemInformationPage()
 				elseif CurrentMenu == 'BiosSetings' then
 					GetBootPage()
-                elseif CurrentMenu == 'SaveAndExit' then
-                    GetBiosSetingsPage()
 				end
-			elseif key==205 and CurrentMenu ~= 'BiosSetings' and CurrentMenu ~= 'SaveAndExit' then --6
+			elseif key==205 and CurrentMenu ~= 'BiosSetings' then --6
 				if CurrentMenu == 'SystemInformation' then
 					GetBootPage()
 				elseif CurrentMenu == 'BootAndRepair' then
 					BiosSetingsPage.Draw()
-                end
-            elseif key==67 then --F9
-                SaveAndExitPageDraw()
+				end
+			elseif key==67 then --F9
+				if CurrentMenu == 'BootAndRepair' or CurrentMenu == 'SystemInformation' or CurrentMenu == 'BiosSetings' then
+					return
+				end
 			else
 				if CurrentMenu == 'BootAndRepair' then
 					BootAndRepairPageKeyListener(key)
@@ -964,8 +850,6 @@ local function keyListener()
 					ServiceTheDevicePageKeyListener(key)
 				elseif CurrentMenu == 'BiosSetings' then
 					BiosSetingsPage.KeyListener(key)
-                elseif CurrentMenu == 'SaveAndExit' then
-                    SaveAndExitPage.KeyListener(key)
 				end
 			end
 		end
@@ -983,11 +867,7 @@ local function HiMenu() -- меню приветствия
 	set(11,1,'Advanced BIOS by titan123023')
 	set(7,15,'Press F12 to enter the settings menu')
 	set(8,16,'Press any key to skip this message')
-	--add below this line
-	if computer.getBootAddress() == '------------------------------------' then
-		set(6,14,'No Boot Device found! Press F3 to emergency recovery')
-	end
-	--add after this line
+
 	local goToMenu
 	while true do
 		local e,_,_,k = computer.pullSignal(5)
@@ -996,13 +876,7 @@ local function HiMenu() -- меню приветствия
 				if k==88 then
 					goToMenu = true
 					break
-				elseif k == 61 then
-                    if computer.getBootAddress() == '------------------------------------' then
-                        RecoverMode()
-                    else
-					   break
-                    end
-                else
+				else
 					break
 				end
 			end
@@ -1014,10 +888,9 @@ local function HiMenu() -- меню приветствия
 		got()
 		GetSystemInformationPage()
 		keyListener()
-    end
-    
+	end
 	BootWithoutAddress()
-    SetTextInTheMiddle(8,50,'No bootable device found!')
+	SetTextInTheMiddle(8,50,'No bootable device found!')
 
 	while true do
 		local e,_,_,k = computer.pullSignal(0.5)
