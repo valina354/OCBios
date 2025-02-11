@@ -22,21 +22,15 @@ local Modifier = {}
 local UI = {}
 
 local BiosSetingsPage = {
-	Element = 1, 
+	Element = 1,
 	Strings = {
-		' Language: [en]', 							-- Language = ' Language: [en]', 		
-		' Format EEPROM data',						-- FormatEEPROMData = ' Format EEPROM data',
-		' Debug format EEPROM data',					-- DebugFormatEEPROMData = ' Debug format EEPROM data',
-		' Debug format EEPROM code'					-- DebugFormatEEPROMCode = ' Debug format EEPROM code'
-	}, 
+		' Language: [en]',
+		' Format EEPROM data',
+		' Debug format EEPROM data',
+		' Debug format EEPROM code'
+	},
 	Descriptions = {
-		--{'This option',					--Данная опция позволит модифицировать файлы запуска MineOS и OpenLoader. Это позволит запускать MineOS/SecureOS/Plan9k даже со включенным приоритетом бута.
-		-- 'will allow to modify',
-		-- 'the startup files of',
-		-- 'MineOS and OpenLoader.',
-		-- 'This will allow to load',
-		-- 'MineOS SecureOS Plan9k'},
-		{'Changes the language', --Меняет язык биоса. Для того, чтобы изменения вступили в силу требуется перезагрузить компьютер. [Еще не готово]
+		{'Changes the language',
 		'of the BIOS.',
 		'In order for',
 		'the changes',
@@ -44,9 +38,11 @@ local BiosSetingsPage = {
 		'you must restart',
 		'the computer.',
 		'[Not ready yet]'},
-		{'deletes BIOS data', --удаляет данные BIOS (сбрасывает настройки)
+		{'deletes BIOS data',
 		'(resets settings)'
 		},
+		{},
+		{}
 	}
 }
 
@@ -56,12 +52,12 @@ local ServiceMenuPage = {
 		'the disk.',
 		'If you are using MineOS',
 		'then apply',
-		'the bootloader patch'}, --Попытатся загрузится с диска. Если вы используете MineOS, то примените патч загрузчика
+		'the bootloader patch'},
 		{'Applies the bootloader',
 		'patch'},
 		{},
 		{'Deletes all data',
-		'from disk'} --Удаляет все данные c диска
+		'from disk'}
 	}
 }
 
@@ -72,40 +68,39 @@ local Debug = {}
 ------------------------------------------
 computer.getBootAddress = function()
 	local MemoryController = invoke(cl("eeprom")(), "getData")
-	return string.sub(MemoryController,1,36) --первый адрес в контроллере (1-36 символ)
+	return string.sub(MemoryController,1,36)
 end
 
 computer.setBootAddress = function(address)
 	if string.len(address) == 36 then
 		local MemoryController = invoke(cl("eeprom")(), "getData")
-		local newData = address..string.sub(MemoryController,37,string.len(MemoryController)) --перезапись первых 36 символов
+		local newData = address..string.sub(MemoryController,37,string.len(MemoryController))
 		return invoke(cl('eeprom')(), "setData", newData)
 	end
 end
 
 function Bios.FormatData()
-	--0f14248c-70d5-48c7-b664-f4fb970f0ddb!0f14248c-70d5-48c7-b664-f4fb970f0ddb!ru!
 	invoke(cl('eeprom')(), "setData", '------------------------------------------------------------------------en')
 end
 
 function Bios.SetLanguage(key)
 	local MemoryController = invoke(cl("eeprom")(), "getData")
-	local newData = string.sub(MemoryController,1,72)..key..string.sub(MemoryController,75,string.len(MemoryController)) -- 73,74 символы - код языка
+	local newData = string.sub(MemoryController,1,72)..key..string.sub(MemoryController,75,string.len(MemoryController))
 end
 
 function Bios.GetLanguage()
 	local MemoryController = invoke(cl("eeprom")(), "getData")
-	return string.sub(MemoryController,73,74) -- 73,74 символы - код языка
+	return string.sub(MemoryController,73,74)
 end
 
 function Bios.GetPriorityBootAddress()
 	local MemoryController = invoke(cl("eeprom")(), "getData")
-	return string.sub(MemoryController,37,72) --второй адрес в контроллере (36-73 символ)
+	return string.sub(MemoryController,37,72)
 end
 
 function Bios.SetPriorityBootAddress(address)
 	local MemoryController = invoke(cl("eeprom")(), "getData")
-	local newData = string.sub(MemoryController,1,36)..address..string.sub(MemoryController,73,string.len(MemoryController)) --перезапись 37-72 символов
+	local newData = string.sub(MemoryController,1,36)..address..string.sub(MemoryController,73,string.len(MemoryController))
 	return invoke(cl('eeprom')(), "setData", newData)
 end
 
@@ -124,19 +119,6 @@ function Modifier.GetModifierOpportunity()
 		end
 
 		if bootCode then
-			--gpu.set(1,1,string.sub(bootCode,180,249)) --Визуально  выводит (всё правильно)
-			--if string.sub(bootCode,180,249) == 'component.proxy(component.proxy(component.list("eeprom")()).getData())' then
-			--	computer.beep() --арёт... всё правильно
-			--end
-			--if string.find(string.sub(bootCode,180,249),'component.proxy(component.proxy(component.list("eeprom")()).getData())') then
-			--	computer.beep() --не может найти, хотя они полностью идентичны...
-			--end
-			-- не ищет, хотя это одно и тоже
-			--gpu.set(1,1,string.find(bootCode,'component.proxy(component.proxy(component.list("eeprom")()).getData())'))
-
-			--local indexs = {string.find(bootCode,'component.proxy(component.proxy(component.list("eeprom")()).getData())')}
-
-			--костылёчек
 			local indexs = {}
 			if string.sub(bootCode,180,249) == 'component.proxy(component.proxy(component.list("eeprom")()).getData())' then
 				indexs[1],indexs[2] = 179,250
@@ -218,6 +200,62 @@ local function SetTextInTheMiddle(y,space,text,correct)
 	end
 end
 ------------------------------------------
+
+local function MemoryTest()
+	local totalMemory = computer.totalMemory()
+	local testSize = math.min(totalMemory, 1024 * 1024) -- Test up to 1MB or total memory, whichever is smaller
+	local testPattern = "Memory Test Pattern"
+	local testWrites = 100 -- Number of write/read cycles to perform
+	local errors = 0
+
+	setBackground(0)
+	setForeground(0xffffff)
+	fillBackground()
+	setResolution(50, 16)
+	SetTextInTheMiddle(3, 50, "Memory Test in Progress...")
+	SetTextInTheMiddle(5, 50, "Testing up to " .. testSize / 1024 .. "KB")
+
+	for writeCycle = 1, testWrites do
+		local progress = math.floor((writeCycle / testWrites) * 100)
+		SetTextInTheMiddle(7, 50, "Pass: " .. writeCycle .. "/" .. testWrites .. " (" .. progress .. "%)")
+
+		for i = 0, testSize - 1, 1024 do -- Test every 1KB chunk
+			local address = i
+			local originalValue = computer.memory()[address] -- Store original value to restore later
+
+			computer.memory()[address] = testPattern
+			if computer.memory()[address] ~= testPattern then
+				errors = errors + 1
+				SetTextInTheMiddle(9, 50, "Error at address: " .. address)
+			end
+
+			computer.memory()[address] = originalValue -- Restore original value
+			os.sleep(0.001) -- Small delay to allow screen to update and prevent lockup in slow environments
+		end
+	end
+
+	if errors > 0 then
+		setBackground(0xaf0000) -- Red background for error
+		fillBackground()
+		SetTextInTheMiddle(3, 50, "Memory Test Failed!")
+		SetTextInTheMiddle(5, 50, "Errors found: " .. errors)
+		SetTextInTheMiddle(7, 50, "Please check your hardware.")
+		computer.beep(440, 0.5)
+		computer.beep(330, 0.5)
+		computer.beep(220, 0.5)
+		os.sleep(5) -- Wait before continuing to menu or shutdown
+		return false -- Indicate failure
+	else
+		setBackground(0x00af00) -- Green background for pass
+		fillBackground()
+		SetTextInTheMiddle(3, 50, "Memory Test Passed!")
+		SetTextInTheMiddle(5, 50, "No errors found.")
+		os.sleep(2) -- Short delay before continuing
+		return true -- Indicate success
+	end
+end
+
+
 local function BootWithAddress(address)
 	computer.setBootAddress(address)
 	local handle, err
@@ -256,16 +294,16 @@ local function BootWithoutAddress()
 		end
 		local bootCode = ""
 		repeat
-			local chunk = invoke(PriorityBootAddress, "read", handle, math.huge)
+			local chunk = invoke(address, "read", handle, math.huge)
 			bootCode = bootCode..(chunk or "")
 		until not chunk
-		invoke(PriorityBootAddress,'close',handle)
+		invoke(address,'close',handle)
 
 		load(bootCode)()
 	else
 		for address in pairs(cl('filesystem')) do
 			if cp(address).getLabel() ~= 'tmpfs' then
-				if (invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "init.lua")) or (invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "OS.lua")) then 
+				if (invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "init.lua")) or (invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "OS.lua")) then
 					computer.setBootAddress(address)
 
 					local handle, err
@@ -343,15 +381,14 @@ end
 local function ClearLastPage()
 	local lastBackground,lastForeground = gpu.getBackground(), gpu.getForeground()
 
-	fill(50,4,24,20,' ') --боковая панель
-	fill(2,4,47,20,' ') --сама страница
+	fill(50,4,24,20,' ')
+	fill(2,4,47,20,' ')
 
 	fill(1,4,1,20,'║')
 	fill(49,4,1,20,'║')
 	set(1,5,'╟───────────────────────────────────────────────╢')
 
 	setBackground(0x0000af)
-	--fill(1,2,74,1,' ')
 	setForeground(0xcdcdcf)
 	set(3,2,'  System information  ')
 	set(25,2,'  Boot or repair  ')
@@ -411,15 +448,6 @@ local function GetSystemInformationPage()
 	set(6,9,'Free memory: '..freeMemory)
 
 	set(4,11,'Computer information:')
-	--[[local users = {computer.users()}
-	if not users then
-		set(6,12,'Computer users: nil')
-	else
-		set(6,12,'Computer users: ')
-		for i=1, #users do
-			set(23,12+i,'['..i..']  '..unicode.sub('users[i]',1,20))
-		end
-	end]]
 	set(6,12,'Computer address: '..unicode.sub(computer.address(),1,8))
 	set(6,13,'Computer uptime: '..computer.uptime())
 	set(6,14,'Computer max energy: '..computer.maxEnergy())
@@ -460,11 +488,10 @@ local function GetBootPage(update)
 			b = cp(address)
 			label = b.getLabel()
 			if label ~= 'tmpfs' then
-				if (invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "/init.lua")) or (invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "/OS.lua")) then 
+				if (invoke(address,'exists','/init.lua') and not invoke(address, "isDirectory", "/init.lua")) or (invoke(address,'exists','/OS.lua') and not invoke(address, "isDirectory", "/OS.lua")) then
 					d=' [Ready to boot]'
 					ready = true
-					--OSVersion = getOS(address) -- какого то Х** не пашет
-				else 
+				else
 					d=' [Not ready to boot]'
 					ready = false
 				end
@@ -481,8 +508,8 @@ local function GetBootPage(update)
 	end
 
 	for i=1,#filesystems do
-		if i==BootMenuStage[1] then 
-			setForeground(0xffffff) 
+		if i==BootMenuStage[1] then
+			setForeground(0xffffff)
 			set(4,5+i,'► ['..unicode.sub(filesystems[i][4],1,8)..'] '..filesystems[i][3]..filesystems[i][2])
 			setForeground(0x0000af)
 		else
@@ -506,7 +533,7 @@ end
 function UI.DrawDescription(Table,element)
 	setForeground(0x0000af)
 
-	fill(50,4,24,15,' ') --очистит старое описание
+	fill(50,4,24,15,' ')
 	if Table.Descriptions[element] then
 		local description = Table.Descriptions[element]
 		for i=1,#description do
@@ -650,7 +677,7 @@ end
 
 local function ServiceTheDevice()
 	CurrentMenu = 'ServiceTheDevice'
-	ServiceMenuStage = {1} 
+	ServiceMenuStage = {1}
 
 	setBackground(0xcdcdcf)
 	setForeground(0x0000af)
@@ -703,17 +730,17 @@ end
 ------------------------------------------
 local function POST()
 	local sc,gpA,iA = cl('screen')(),cl('gpu')(),cl('internet')()
-	if gpA and sc then 
+	if gpA and sc then
 		pcall(invoke, gpA, 'bind', sc)
 		gpu=cp(gpA)
-	else 
-		computer.beep(20,5) 
-		computer.shutdown()  
+	else
+		computer.beep(20,5)
+		computer.shutdown()
 	end
 
-	if iA then 
-		InternetInt = true 
-		internet=cp(iA) 
+	if iA then
+		InternetInt = true
+		internet=cp(iA)
 	else
 		computer.beep(2000,2)
 	end
@@ -722,32 +749,35 @@ local function POST()
 		Bios.FormatData()
 	end
 
+	if not MemoryTest() then -- Run memory test, if it fails, stop here.
+		return
+	end
 end
 
 ------------
 
 local function BootAndRepairPageKeyListener(key)
-	if key==200 and BootMenuStage[1] > 1 then --2
+	if key==200 and BootMenuStage[1] > 1 then
 		local last = BootMenuStage[1]
 		BootMenuStage[1] = BootMenuStage[1]-1
 		BootOtr(BootMenuStage[1],last)
 
-	elseif key==208 and BootMenuStage[1] < BootMenuStage[2] then --8
+	elseif key==208 and BootMenuStage[1] < BootMenuStage[2] then
 		local last = BootMenuStage[1]
 		BootMenuStage[1] = BootMenuStage[1]+1
 		BootOtr(BootMenuStage[1],last)
 
-	elseif key==63 then --F5
+	elseif key==63 then
 		GetBootPage(true)
 
-	elseif key==28 then --enter
+	elseif key==28 then
 		ServiceTheDevice()
 
 	end
 end
 
 local function ServiceTheDevicePageKeyListener(key)
-	if key==28 then --enter
+	if key==28 then
 		if ServiceMenuStage[1] == 1 then
 			if ServiceMenuStage[2][5] then
 				BootWithAddress(ServiceMenuStage[2][4])
@@ -785,7 +815,7 @@ local function ServiceTheDevicePageKeyListener(key)
 		ServiceMenuStage[1] = ServiceMenuStage[1]+1
 		ServiceTheDeviceOtr(ServiceMenuStage[1], last)
 
-	elseif key == 15 then --tab
+	elseif key == 15 then
 		GetBootPage(true)
 	end
 end
@@ -827,19 +857,19 @@ local function keyListener()
 	while true do
 		local e,_,_,key = computer.pullSignal(0.5)
 		if e=='key_up'then
-			if key==203 and CurrentMenu ~= 'SystemInformation' then --4
+			if key==203 and CurrentMenu ~= 'SystemInformation' then
 				if CurrentMenu == 'BootAndRepair' then
 					GetSystemInformationPage()
 				elseif CurrentMenu == 'BiosSetings' then
 					GetBootPage()
 				end
-			elseif key==205 and CurrentMenu ~= 'BiosSetings' then --6
+			elseif key==205 and CurrentMenu ~= 'BiosSetings' then
 				if CurrentMenu == 'SystemInformation' then
 					GetBootPage()
 				elseif CurrentMenu == 'BootAndRepair' then
 					BiosSetingsPage.Draw()
 				end
-			elseif key==67 then --F9
+			elseif key==67 then
 				if CurrentMenu == 'BootAndRepair' or CurrentMenu == 'SystemInformation' or CurrentMenu == 'BiosSetings' then
 					return
 				end
@@ -853,16 +883,16 @@ local function keyListener()
 				end
 			end
 		end
-		if CurrentMenu == 'SystemInformation' then --обновление инфы каждый проход цикла (0.5сек)
+		if CurrentMenu == 'SystemInformation' then
 			SystemInformationPageUpdate()
 		end
 	end
 end
 
-local function HiMenu() -- меню приветствия
+local function HiMenu()
 	setResolution(50,16)
-	setBackground(0) -- на случай если запуск производится после ошибки биоса (синего экрана)
-	fillBackground() -- заливка чёрным цветом ^^^
+	setBackground(0)
+	fillBackground()
 
 	set(11,1,'Advanced BIOS by titan123023')
 	set(7,15,'Press F12 to enter the settings menu')
